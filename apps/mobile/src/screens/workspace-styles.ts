@@ -583,6 +583,17 @@ const baseWorkspaceStyles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingTop: 12,
   },
+  memoGridList: {
+    paddingHorizontal: 6,
+  },
+  memoGridCellHalf: {
+    paddingHorizontal: 6,
+    width: "50%",
+  },
+  memoGridCellThird: {
+    paddingHorizontal: 6,
+    width: "33.333333%",
+  },
   memoList: {
     flex: 1,
   },
@@ -829,11 +840,11 @@ const baseWorkspaceStyles = StyleSheet.create({
     fontWeight: "400",
   },
   tag: {
-    backgroundColor: "#ecfdf5",
-    borderColor: "#a7f3d0",
+    backgroundColor: "#f1f5f9",
+    borderColor: "#e2e8f0",
     borderRadius: 3,
     borderWidth: 1,
-    color: "#047857",
+    color: "#0f172a",
     fontSize: 11,
     fontWeight: "600",
     overflow: "hidden",

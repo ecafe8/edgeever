@@ -87,6 +87,7 @@ import {
   generateCardCss,
 } from "@edgeever/shared/note-image-card";
 import { useDOMImperativeHandle, type DOMImperativeFactory, type DOMProps } from "expo/dom";
+import { toCanvas } from "html-to-image";
 import { createImageInsertTransaction, createNativeImageGalleryView, groupUploadedImages, NATIVE_IMAGE_GALLERY_CSS } from "@edgeever/shared/native-image-gallery";
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type Ref, type SetStateAction } from "react";
 import {
@@ -195,14 +196,6 @@ type ImageExportRequest = {
   showTags?: boolean;
   showUpdatedAt?: boolean;
   branding?: boolean;
-};
-
-const bytesToBase64 = (bytes: Uint8Array) => {
-  let binary = "";
-  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
-  }
-  return btoa(binary);
 };
 
 const fallbackPromptParameterKind = (action: AiAction): AiPromptParameterKind =>
@@ -368,7 +361,10 @@ const renderWithBeautifulMermaid = async (source: string, theme: "light" | "dark
       ...THEMES[theme === "dark" ? "zinc-dark" : "zinc-light"],
       transparent: true,
       font: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
-      padding: 24,
+      padding: 12,
+      nodeSpacing: 16,
+      layerSpacing: 28,
+      componentSpacing: 16,
     });
   } catch {
     return null;
@@ -1239,24 +1235,29 @@ function LocalTiptapEditorImpl(props: LocalTiptapEditorProps) {
   const exportImage = useCallback((requestJsonValue: DOMValue) => {
     if (typeof requestJsonValue !== "string" || !editor || editor.isDestroyed || !onImageExportEventRef.current) return;
 
+    let request: ImageExportRequest;
+    try {
+      request = JSON.parse(requestJsonValue) as ImageExportRequest;
+      if (!request.requestId || (request.format !== "png" && request.format !== "jpeg")) return;
+    } catch {
+      return;
+    }
+
+    const notify = (payload: Record<string, unknown>) =>
+      onImageExportEventRef.current?.(JSON.stringify({ requestId: request.requestId, ...payload }));
+    const reportProgress = (stage: "prepare" | "render" | "transfer") => {
+      void Promise.resolve(notify({ type: "progress", stage })).catch(() => {});
+    };
+    const missingImagePlaceholder = "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=";
+
     void (async () => {
-      let request: ImageExportRequest;
-      try {
-        request = JSON.parse(requestJsonValue) as ImageExportRequest;
-        if (!request.requestId || (request.format !== "png" && request.format !== "jpeg")) return;
-      } catch {
-        return;
-      }
-
-      const notify = (payload: Record<string, unknown>) =>
-        onImageExportEventRef.current?.(JSON.stringify({ requestId: request.requestId, ...payload }));
-
+      reportProgress("prepare");
       const resolvedTheme = resolveTheme(request.background, request.theme);
       const fontStyle = request.fontStyle ?? "serif";
       const fontSize = request.fontSize ?? "lg";
-      const cardWidth = request.cardWidth ?? "standard";
-      const targetWidth = NOTE_IMAGE_CARD_WIDTH_PIXELS[cardWidth] || 680;
-      const themeCfg = NOTE_IMAGE_THEMES[resolvedTheme] || NOTE_IMAGE_THEMES.slate;
+      const cardWidth = request.cardWidth ?? "wide";
+      const targetWidth = NOTE_IMAGE_CARD_WIDTH_PIXELS[cardWidth] || NOTE_IMAGE_CARD_WIDTH_PIXELS.wide;
+      const themeCfg = NOTE_IMAGE_THEMES[resolvedTheme] || NOTE_IMAGE_THEMES.aurora;
 
       const editorClone = editor.view.dom.cloneNode(true) as HTMLElement;
       editorClone.removeAttribute("contenteditable");
@@ -1314,7 +1315,9 @@ function LocalTiptapEditorImpl(props: LocalTiptapEditorProps) {
         const failedImages = exportedImages.filter((image) => !image.complete || image.naturalWidth === 0).length;
         const totalHeight = Math.max(1, Math.ceil(documentRoot.getBoundingClientRect().height));
         const renderPlan = planMobileNoteImageRender(targetWidth, totalHeight);
+        let embedFailedImages = 0;
         let captureRoot = documentRoot;
+        let captureWrapper: HTMLDivElement | null = null;
         if (renderPlan.sourceScale < 1) {
           const wrapper = document.createElement("div");
           wrapper.style.cssText = `position:relative;width:${renderPlan.sourceWidth}px;height:${renderPlan.sourceHeight}px;overflow:hidden;`;
@@ -1323,34 +1326,65 @@ function LocalTiptapEditorImpl(props: LocalTiptapEditorProps) {
           documentRoot.style.transform = `scale(${renderPlan.sourceScale})`;
           documentRoot.style.transformOrigin = "top left";
           captureRoot = wrapper;
+          captureWrapper = wrapper;
         }
         const backgroundColor = NOTE_IMAGE_BACKGROUND_COLORS[resolvedTheme] || themeCfg.canvasBg;
 
-        const { toCanvas } = await import("html-to-image");
-        const canvas = await toCanvas(captureRoot, {
+        reportProgress("render");
+        const renderCanvas = (root: HTMLElement, width: number, height: number) => toCanvas(root, {
           backgroundColor,
           cacheBust: false,
-          height: renderPlan.sourceHeight,
+          height,
+          imagePlaceholder: missingImagePlaceholder,
+          onImageErrorHandler: (event) => {
+            embedFailedImages += 1;
+            if (event instanceof Event && event.target instanceof HTMLImageElement) {
+              event.target.src = missingImagePlaceholder;
+            }
+          },
           pixelRatio: renderPlan.pixelRatio,
           skipFonts: true,
-          width: renderPlan.sourceWidth,
+          width,
         });
-        const blob = await new Promise<Blob>((resolve, reject) => {
-          canvas.toBlob(
-            (result) => result ? resolve(result) : reject(new Error("Image renderer returned an empty file")),
-            request.format === "jpeg" ? "image/jpeg" : "image/png",
-            request.format === "jpeg" ? 0.92 : 1,
-          );
-        });
-
+        let canvas: HTMLCanvasElement;
+        try {
+          canvas = await renderCanvas(captureRoot, renderPlan.sourceWidth, renderPlan.sourceHeight);
+        } catch {
+          // Android WebView can reject a large SVG image without an Error message.
+          // Try a smaller source once while keeping the entire card visible.
+          const retryScale = renderPlan.sourceScale * 0.75;
+          const retryWidth = Math.max(1, Math.floor(targetWidth * retryScale));
+          const retryHeight = Math.max(1, Math.floor(totalHeight * retryScale));
+          if (retryScale < 0.5) throw new Error("NOTE_IMAGE_RENDER_FAILED");
+          if (!captureWrapper) {
+            captureWrapper = document.createElement("div");
+            documentRoot.replaceWith(captureWrapper);
+            captureWrapper.appendChild(documentRoot);
+          }
+          captureWrapper.style.cssText = `position:relative;width:${retryWidth}px;height:${retryHeight}px;overflow:hidden;`;
+          documentRoot.style.transform = `scale(${retryScale})`;
+          documentRoot.style.transformOrigin = "top left";
+          try {
+            canvas = await renderCanvas(captureWrapper, retryWidth, retryHeight);
+          } catch {
+            throw new Error("NOTE_IMAGE_RENDER_FAILED");
+          }
+        }
         const extension = request.format === "jpeg" ? "jpg" : "png";
         const basename = buildImageExportBasename(request.title, request.fallbackTitle);
         const filename = `${basename}.${extension}`;
         const mimeType = request.format === "jpeg" ? "image/jpeg" : "image/png";
+        // Android WebView can take many seconds to return canvas.toBlob for a
+        // long note. This encodes promptly and gives the bridge base64 directly.
+        const dataUrl = canvas.toDataURL(mimeType, request.format === "jpeg" ? 0.92 : 1);
+        const dataUrlPrefix = `data:${mimeType};base64,`;
+        if (!dataUrl.startsWith(dataUrlPrefix)) throw new Error("Image renderer returned an empty file");
+        const base64 = dataUrl.slice(dataUrlPrefix.length);
 
-        for (let offset = 0; offset < blob.size; offset += IMAGE_EXPORT_CHUNK_BYTES) {
-          const bytes = new Uint8Array(await blob.slice(offset, offset + IMAGE_EXPORT_CHUNK_BYTES).arrayBuffer());
-          await notify({ type: "chunk", chunk: bytesToBase64(bytes) });
+        reportProgress("transfer");
+        const chunkChars = (IMAGE_EXPORT_CHUNK_BYTES / 3) * 4;
+        for (let offset = 0; offset < base64.length; offset += chunkChars) {
+          await notify({ type: "chunk", chunk: base64.slice(offset, offset + chunkChars) });
         }
         await notify({
           type: "complete",
@@ -1359,14 +1393,16 @@ function LocalTiptapEditorImpl(props: LocalTiptapEditorProps) {
           width: canvas.width,
           height: canvas.height,
           totalImages: exportedImages.length,
-          failedImages,
+          failedImages: Math.min(exportedImages.length, failedImages + embedFailedImages),
         });
       } catch (error) {
         await notify({ type: "error", message: error instanceof Error ? error.message : "Image export failed" });
       } finally {
         host.remove();
       }
-    })();
+    })().catch((error: unknown) => {
+      void notify({ type: "error", message: error instanceof Error ? error.message : "Image export failed" });
+    });
   }, [editor]);
 
   useDOMImperativeHandle(
@@ -2418,6 +2454,7 @@ const createMobileCodeBlockExtension = (
                 suppressErrorRendering: true,
                 theme: "base",
                 themeVariables: getMobileMermaidThemeVariables(theme),
+                flowchart: { nodeSpacing: 25, rankSpacing: 30 },
               });
               const valid = await mermaid.parse(source, { suppressErrors: true });
               if (!valid) {
@@ -3216,7 +3253,7 @@ const getEditorStyles = (theme: "light" | "dark", options?: { viewer?: boolean }
   .edgeever-editor-content ul[data-type="taskList"] li[data-checked] > div > p { margin-bottom: 0; }
   .edgeever-editor-content ul[data-type="taskList"] li[data-checked="true"] > div > p { color: #94a3b8; text-decoration: line-through; }
   .edgeever-editor-content ul[data-type="taskList"] ul[data-type="taskList"] { margin: 4px 0 0; padding-left: 24px; }
-  .edgeever-editor-content blockquote { margin-left: 0; max-width: 100%; padding: 6px 12px; border-left: 3px solid ${theme === "dark" ? "#475569" : "#cbd5e1"}; border-radius: 1px 4px 4px 1px; background: ${theme === "dark" ? "rgba(255, 255, 255, 0.05)" : "#f3f5f7"}; color: ${theme === "dark" ? "#f8fafc" : "#3d4450"}; }
+  .edgeever-editor-content blockquote { margin-left: 0; margin-right: 0; max-width: 100%; padding: 6px 12px; border-left: 3px solid ${theme === "dark" ? "#475569" : "#cbd5e1"}; border-radius: 1px 4px 4px 1px; background: ${theme === "dark" ? "rgba(255, 255, 255, 0.05)" : "#f3f5f7"}; color: ${theme === "dark" ? "#f8fafc" : "#3d4450"}; }
   .edgeever-editor-content pre { max-width: 100%; overflow-x: auto; border-radius: 8px; border: 1px solid ${theme === "dark" ? "#334155" : "#e2e8f0"}; padding: 12px 90px 12px 14px; background: ${theme === "dark" ? "#1e293b" : "#f8fafc"}; color: ${theme === "dark" ? "#e2e8f0" : "#0f172a"}; font-size: 0.88rem; box-shadow: 0 1px 2px ${theme === "dark" ? "rgba(0, 0, 0, 0.2)" : "rgba(15, 23, 42, 0.03)"}; }
   .edgeever-editor-content code { border-radius: 4px; padding: 2px 5px; border: 1px solid ${theme === "dark" ? "rgba(255, 255, 255, 0.12)" : "#e1e5ea"}; background: ${theme === "dark" ? "rgba(255, 255, 255, 0.06)" : "#f3f5f7"}; color: ${theme === "dark" ? "#f8fafc" : "#3d4450"}; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.88em; font-weight: 550; }
   .edgeever-editor-content pre code { padding: 0; border: 0; background: transparent; font-size: inherit; font-weight: normal; color: inherit; }
@@ -3327,7 +3364,7 @@ const getEditorStyles = (theme: "light" | "dark", options?: { viewer?: boolean }
   .edgeever-x6-diagram .x6-node { cursor: pointer; }
   .edgeever-mermaid-code-block > pre { display: none; margin: 8px 0 0; }
   .edgeever-mermaid-code-block.is-source-visible > pre { display: block; }
-  .edgeever-mermaid-preview { display: flex; min-height: 104px; align-items: center; justify-content: flex-start; overflow-x: auto; padding: 16px 4px; background: transparent; }
+  .edgeever-mermaid-preview { display: flex; min-height: 72px; align-items: center; justify-content: flex-start; overflow-x: auto; padding: 8px 4px; background: transparent; }
   .edgeever-mermaid-preview[hidden] { display: none; }
   .edgeever-mermaid-svg { display: flex; width: max-content; min-width: 100%; flex: none; justify-content: center; }
   .edgeever-mermaid-svg svg { display: block; max-width: none; max-height: none; flex: none; }

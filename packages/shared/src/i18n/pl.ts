@@ -1746,6 +1746,16 @@ export const pl = {
     confirmImport: "Importuj",
   },
   shortcuts: {
+    global: {
+      label: "Pokaż lub ukryj okno aplikacji",
+      description: "Działa także w innych aplikacjach. Skrót jest zapisany tylko na tym urządzeniu.",
+      disabled: "Nie ustawiono",
+      disable: "Wyłącz",
+      requireModifiers: "Użyj litery, cyfry lub F1–F12 z co najmniej dwoma klawiszami modyfikującymi.",
+      invalid: "Ta kombinacja klawiszy nie jest obsługiwana.",
+      unavailable: "System nie mógł zarejestrować skrótu. Wybierz inną kombinację lub sprawdź ustawienia systemowe.",
+      saveFailed: "Nie udało się zapisać skrótu. Spróbuj ponownie.",
+    },
     title: "Skróty klawiszowe",
     manage: "Zarządzaj",
     description: "Ustaw kombinacje klawiszy dla częstych działań na notatkach. Naciśnij Esc, aby przerwać nagrywanie.",
@@ -2005,6 +2015,12 @@ export const pl = {
     previous: "Poprzedni PDF",
     next: "Następny PDF",
   },
+  wordViewer: {
+    loading: "Wczytywanie podglądu Word…",
+    unavailable: "Nie można wyświetlić podglądu tego dokumentu Word. Nadal możesz go pobrać lub otworzyć w innej aplikacji.",
+    previewTooLarge: "Podgląd wyłączony powyżej 10 MiB",
+    previewLabel: "Podgląd Word: {{filename}}",
+  },
   audioPlayer: {
     label: "Odtwarzacz audio: {{filename}}",
     unavailable: "Tego formatu audio nie można odtworzyć na tym urządzeniu. Nadal możesz go pobrać lub otworzyć w innej aplikacji.",
@@ -2152,7 +2168,6 @@ export const pl = {
       theme: "Motyw",
       background: "Tło",
       themes: {
-        slate: "Klasyczny jasny",
         aurora: "Zorza",
         sunset: "Zachód słońca",
         midnight: "Północ",

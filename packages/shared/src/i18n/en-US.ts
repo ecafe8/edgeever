@@ -1746,6 +1746,16 @@ export const enUS = {
     confirmImport: "Import",
   },
   shortcuts: {
+    global: {
+      label: "Show or hide desktop window",
+      description: "Works from other apps. This shortcut is saved only on this device.",
+      disabled: "Not set",
+      disable: "Disable",
+      requireModifiers: "Use a letter, number, or F1–F12 with at least two modifier keys.",
+      invalid: "This key combination is not supported.",
+      unavailable: "The system could not register this shortcut. Choose another combination or check system shortcut settings.",
+      saveFailed: "The shortcut could not be saved. Try again.",
+    },
     title: "Keyboard shortcuts",
     manage: "Manage",
     description: "Set key combinations for common note actions. Press Esc to cancel recording.",
@@ -2005,6 +2015,12 @@ export const enUS = {
     previous: "Previous PDF",
     next: "Next PDF",
   },
+  wordViewer: {
+    loading: "Loading Word preview…",
+    unavailable: "This Word document cannot be previewed. You can still download it or open it externally.",
+    previewTooLarge: "Preview disabled over 10 MiB",
+    previewLabel: "Word preview: {{filename}}",
+  },
   audioPlayer: {
     label: "Audio player: {{filename}}",
     unavailable: "This audio format cannot be played on this device. You can still download it or open it externally.",
@@ -2152,7 +2168,6 @@ export const enUS = {
       theme: "Theme",
       background: "Background",
       themes: {
-        slate: "Classic Light",
         aurora: "Aurora",
         sunset: "Sunset",
         midnight: "Midnight",

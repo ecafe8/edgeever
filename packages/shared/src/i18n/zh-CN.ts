@@ -1746,6 +1746,16 @@ export const zhCN = {
     confirmImport: "确认导入",
   },
   shortcuts: {
+    global: {
+      label: "显示或隐藏桌面窗口",
+      description: "在其他应用中也可使用。此快捷键只保存在当前设备。",
+      disabled: "未设置",
+      disable: "停用",
+      requireModifiers: "请使用字母、数字或 F1–F12，并同时按下至少两个修饰键。",
+      invalid: "不支持这个组合键。",
+      unavailable: "系统未能注册这个快捷键。请换一个组合键，或检查系统快捷键设置。",
+      saveFailed: "无法保存快捷键，请重试。",
+    },
     title: "绑定快捷键",
     manage: "管理",
     description: "为常用笔记动作设置组合键。按 Esc 可取消当前录制。",
@@ -2005,6 +2015,12 @@ export const zhCN = {
     previous: "上一个 PDF",
     next: "下一个 PDF",
   },
+  wordViewer: {
+    loading: "正在加载 Word 预览…",
+    unavailable: "无法预览此 Word 文档，你仍可下载或在外部打开。",
+    previewTooLarge: "超过 10 MiB，不在笔记内预览",
+    previewLabel: "Word 预览：{{filename}}",
+  },
   audioPlayer: {
     label: "音频播放器：{{filename}}",
     unavailable: "当前设备无法播放此音频格式，你仍可下载或在外部打开。",
@@ -2150,7 +2166,6 @@ export const zhCN = {
       theme: "主题风格",
       background: "背景",
       themes: {
-        slate: "经典浅色",
         aurora: "极光渐变",
         sunset: "暮色晚霞",
         midnight: "暗夜曜石",
